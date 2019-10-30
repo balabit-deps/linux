@@ -1,0 +1,65 @@
+# default: snapshot build on test ZBS branch
+# set RELEASE_VERSION when creating a release, for example: RELEASE_VERSION=0.0.4
+
+stages:
+  - validate-vars
+  - build-libbpf
+  #- package-kernel-headers
+
+variables:
+  DOCKER_IMAGE: "docker.balabit/syslog-ng/base-oracle7"
+  DOCKER_IMAGE_VERSION: "v1.1"
+  GIT_DEPTH: 1
+
+.linux-build-env: &linux-build-env
+  image: ${DOCKER_IMAGE}:${DOCKER_IMAGE_VERSION}
+  before_script:
+    - export DIST=linux-glibc2.11
+    - export ARCH=amd64
+    - git-use-gitlab-credentials.sh
+
+.build-libbpf: &build-libbpf
+  script:
+    - git clone git@git.balabit:syslog-ng/pe-builder-image.git
+    - if [ ! -z "$RELEASE_VERSION" ]; then export SNAPSHOT=no ; fi
+    - cd pe-builder-image && git checkout $PE_BUILDER_BRANCH && scripts/generate-ci-data.sh && export `cat ci-data.env` && cd -
+
+    - export ZBS_ARCH=amd64
+    - export ZBS_BUILDER_TYPE=tgz2
+    - zbs-get update && zbs-get install libelf-dev libelf zlib-dev zlib
+
+    - export PKG_CONFIG_PATH="/opt/syslog-ng/lib/pkgconfig:$PKG_CONFIG_PATH"
+    - export LIBRARY_PATH="$LIBRARY_PATH:/opt/syslog-ng/lib"
+    - export EXTRA_CFLAGS="-isystem /opt/syslog-ng/include -Wl,-R/opt/syslog-ng/lib"
+
+    # libbpf
+    - DEST_DIR="${CI_PROJECT_DIR}/artifacts/=install"
+    - LIBBPF_INSTALL_FLAGS="prefix=/opt/syslog-ng libdir=/opt/syslog-ng/lib DESTDIR=$DEST_DIR"
+    - make -C ${CI_PROJECT_DIR}/tools/lib/bpf install install_headers $LIBBPF_INSTALL_FLAGS
+
+    # kernel headers - should be a separate job/package
+    - make ARCH=x86_64 INSTALL_HDR_PATH=$DEST_DIR/opt/syslog-ng headers_install
+
+    - pe-builder-image/scripts/prepare-binaries.sh libbpf
+    - pe-builder-image/scripts/add-binaries.sh libbpf
+    - rm -rf $DEST_DIR
+  artifacts:
+    expire_in: "2 weeks"
+    when: always
+    paths:
+      - artifacts
+      - pe-builder-image/ci-data.env
+
+validate-vars:
+  stage: validate-vars
+  image: ${DOCKER_IMAGE}:${DOCKER_IMAGE_VERSION}
+  script:
+    - if [ -z "$ZBS_BRANCH" -a "$SNAPSHOT" = "yes" ]; then exit 1; fi
+    - if [ "$SNAPSHOT" = "no" -a -z "$RELEASE_VERSION" ]; then exit 1; fi;
+  variables:
+    GIT_STRATEGY: none
+
+build-libbpf:linux:
+  stage: build-libbpf
+  <<: *linux-build-env
+  <<: *build-libbpf

@@ -1,0 +1,3 @@
+opt/syslog-ng/include/*
+opt/syslog-ng/lib/pkgconfig/*
+opt/syslog-ng/lib/libbpf.*
