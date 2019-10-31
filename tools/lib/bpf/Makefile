@@ -32,7 +32,7 @@ else
 endif
 
 prefix ?= /usr/local
-libdir = $(prefix)/$(libdir_relative)
+libdir ?= $(prefix)/$(libdir_relative)
 man_dir = $(prefix)/share/man
 man_dir_SQ = '$(subst ','\'',$(man_dir))'
 
