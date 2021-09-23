@@ -23,6 +23,7 @@ variables:
     - git clone git@git.balabit:syslog-ng/pe-builder-image.git
     - if [ ! -z "$RELEASE_VERSION" ]; then export SNAPSHOT=no ; fi
     - cd pe-builder-image && git checkout $PE_BUILDER_BRANCH && scripts/generate-ci-data.sh && export `cat ci-data.env` && cd -
+    - export VERSION=$RELEASE_VERSION
 
     - export ZBS_ARCH=amd64
     - export ZBS_BUILDER_TYPE=tgz2
