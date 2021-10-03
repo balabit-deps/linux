@@ -14,6 +14,7 @@ variables:
 .linux-build-env: &linux-build-env
   image: ${DOCKER_IMAGE}:${DOCKER_IMAGE_VERSION}
   before_script:
+    - export VERSION=0.5.0
     - export DIST=linux-glibc2.11
     - export ARCH=amd64
     - git-use-gitlab-credentials.sh
@@ -22,8 +23,11 @@ variables:
   script:
     - git clone git@git.balabit:syslog-ng/pe-builder-image.git
     - if [ ! -z "$RELEASE_VERSION" ]; then export SNAPSHOT=no ; fi
-    - cd pe-builder-image && git checkout $PE_BUILDER_BRANCH && scripts/generate-ci-data.sh && export `cat ci-data.env` && cd -
-    - export VERSION=$RELEASE_VERSION
+    - if [ "$SNAPSHOT" = "yes" ]; then export SNAPSHOT_VERSION=$(date +'%Y%m%d+%H%M'); export VERSION="${VERSION}+${SNAPSHOT_VERSION}"; fi
+    - if [ "$SNAPSHOT" = "no" ]; then export VERSION="$RELEASE_VERSION"; fi
+    - if [ "$SNAPSHOT" = "yes" ]; then export FULL_ZBS_BRANCH="syslog-ng-pe-7.0-$ZBS_BRANCH"; else export FULL_ZBS_BRANCH="syslog-ng-7.0"; fi
+
+    - cd pe-builder-image && git checkout $PE_BUILDER_BRANCH; cd -
 
     - export ZBS_ARCH=amd64
     - export ZBS_BUILDER_TYPE=tgz2
@@ -41,15 +45,20 @@ variables:
     # kernel headers - should be a separate job/package
     - make ARCH=x86_64 INSTALL_HDR_PATH=$DEST_DIR/opt/syslog-ng headers_install
 
-    - pe-builder-image/scripts/prepare-binaries.sh libbpf
-    - pe-builder-image/scripts/add-binaries.sh libbpf
+    - pe-builder-image/common/prepare-binaries.sh --name=libbpf --version="$VERSION"
+        --input-dir artifacts/\=install
+        --pkg-descriptors zbs_files
+        --output-dir artifacts/bin-pkgs
+    - pe-builder-image/common/zbs-upload-binaries.sh --src-name=libbpf --zbs-branch="$FULL_ZBS_BRANCH"
+        --zbs-passwd="$BUILDER_PASS"
+        --input-dir artifacts/bin-pkgs
+
     - rm -rf $DEST_DIR
   artifacts:
     expire_in: "2 weeks"
     when: always
     paths:
       - artifacts
-      - pe-builder-image/ci-data.env
 
 validate-vars:
   stage: validate-vars
